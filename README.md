@@ -1,38 +1,70 @@
-# Distorted Visual Sequence Recognition
+# Distorted Visual Sequence Pattern Recognition
 
-This repository contains a deep learning pipeline built in PyTorch to recognize text sequences from distorted grayscale images. The images contain overlapping characters, background noise, blur, and occlusion.
+**Name:** Himesh Kumar | **Enrollment:** 24119021
 
-## Model Architecture
+---
 
-The solution uses a **ResNet-CRNN** (Convolutional Recurrent Neural Network) architecture trained with CTC Loss:
+The task is to read 6-character text sequences from heavily distorted grayscale images — characters overlap, blur, and have uneven alignment. Standard OCR fails here because there's no clean segmentation. I solved it using a CRNN trained with CTC loss, which handles variable-length alignment without needing character-level annotations.
 
-1. **ResNet CNN Backbone**: A custom 4-stage residual network with skip connections to prevent vanishing gradients. The channel progression is `32 -> 64 -> 128 -> 256 -> 512`. Each stage uses 3x3 convolutions with batch normalization and ReLU activations.
-2. **Height Pooling**: An adaptive average pooling layer (`nn.AdaptiveAvgPool2d((1, None))`) collapses the vertical height of the feature map to 1, converting the 2D spatial features into a 1D sequence of 50 time-steps.
-3. **Bidirectional LSTM**: A 2-layer BiLSTM with hidden size 256 and 30% dropout models the sequential character context in both directions.
-4. **CTC Loss and Decoding**: Trained using PyTorch's `nn.CTCLoss`. At inference time, I use both Greedy and Beam Search (beam width 10) decoding strategies.
+## Approach
 
-## Training Strategy
+I went with a ResNet-CRNN architecture. The idea is straightforward: a CNN extracts visual features from the image, those features get reshaped into a time sequence, and a BiLSTM reads that sequence to predict characters left-to-right and right-to-left simultaneously. CTC loss then figures out the alignment during training.
 
-- **Image size**: 32x200 grayscale.
-- **Augmentation**: Random affine transforms, random perspective distortion, Gaussian blur, color jitter, and random erasing to simulate real-world distortions.
-- **Optimizer**: AdamW with weight decay of 1e-4.
-- **Scheduler**: OneCycleLR with a max learning rate of 3e-4 and 10% warmup steps followed by cosine decay. This provides significantly faster convergence than a fixed learning rate.
-- **Gradient Clipping**: Gradients are clipped to a norm of 5.0 to prevent explosion.
+The reason I chose residual blocks over a plain CNN is that skip connections let gradients flow cleanly through deeper layers. Without them, the model struggles to learn fine character details under heavy noise.
 
-## Evaluation
+## Architecture
 
-Performance is measured using Character Error Rate (CER), based on the Levenshtein (edit) distance between predicted and ground truth sequences. Both greedy and beam search decoding produce identical results in my runs, suggesting the model output distributions are already sharply peaked.
+```
+Input (1 × 32 × 200 grayscale)
+    ↓
+ResNet CNN Backbone
+  - init conv: 1 → 32 channels
+  - 4 residual stages: 32→64→128→256→512
+  - MaxPool after each stage (height halved, width preserved later)
+  - AdaptiveAvgPool2d((1, None)) → squash height to 1
+    ↓
+Sequence: 50 time steps × 512 features
+    ↓
+2-layer Bidirectional LSTM (hidden=256, dropout=0.3)
+    ↓
+FC layer → 39 classes (38 chars + CTC blank)
+    ↓
+CTC Loss / Beam Search Decoding
+```
 
-## Repository Structure
+## Training
 
-- `notebook_Himesh_Kumar_24119021.ipynb`: Full pipeline including EDA, model definition, training loop, evaluation, and test inference.
-- `submission_Himesh_Kumar_24119021.csv`: Final test set predictions.
+| Setting | Value |
+|---|---|
+| Image size | 32 × 200 |
+| Batch size | 64 |
+| Optimizer | AdamW (lr=3e-4, weight_decay=1e-4) |
+| Scheduler | OneCycleLR — 10% warmup + cosine decay |
+| Gradient clipping | 5.0 |
+| Epochs | 50 |
+| Train / Val split | 18,000 / 2,000 |
 
-## Setup
+**Augmentations:** RandomAffine, RandomPerspective, GaussianBlur, ColorJitter, RandomErasing — chosen to mimic the kinds of distortions actually present in the images.
 
-1. Install dependencies:
-   ```bash
-   pip install torch torchvision pandas matplotlib scikit-learn pillow tqdm
-   ```
+I used OneCycleLR instead of a fixed LR or ReduceLROnPlateau because it warms up first (avoids bad early updates) then decays smoothly. In practice it converged noticeably faster.
 
-2. Run the notebook in Google Colab with a T4 GPU runtime. Upload `cig_ps.zip` to your Google Drive — the notebook will automatically mount Drive, locate the zip, and extract it.
+## Results
+
+| Metric | Value |
+|---|---|
+| Val CER | 0.0007 |
+| Exact match accuracy | 99.80% (1996 / 2000) |
+
+Both greedy and beam search (width=10) decoding gave identical results — meaning the model's output distributions are already very sharp, so there's no ambiguity left for beam search to resolve.
+
+## Files
+
+- `notebook_Himesh_Kumar_24119021.ipynb` — full pipeline: EDA, model, training, evaluation, test predictions
+- `submission_Himesh_Kumar_24119021.csv` — predictions for all 5,000 test images
+
+## Running in Colab
+
+1. Upload `cig_ps.zip` to your Google Drive
+2. Open the notebook in Google Colab with a T4 GPU runtime
+3. Run all cells — Drive mounts automatically, zip is found and extracted, training starts
+4. The submission CSV downloads automatically after training
