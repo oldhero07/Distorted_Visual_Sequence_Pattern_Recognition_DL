@@ -1,8 +1,6 @@
 # Distorted Visual Sequence Pattern Recognition
 
-**Name:** Himesh Kumar | **Enrollment:** 24119021
 
----
 
 The task is to read 6-character text sequences from heavily distorted grayscale images — characters overlap, blur, and have uneven alignment. Standard OCR fails here because there's no clean segmentation. I solved it using a CRNN trained with CTC loss, which handles variable-length alignment without needing character-level annotations.
 
